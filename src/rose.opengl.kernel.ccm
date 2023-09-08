@@ -1,0 +1,495 @@
+// Copyright Nezametdinov E. Ildus 2023.
+// Distributed under the Boost Software License, Version 1.0.
+// (See accompanying file LICENSE_1_0.txt or copy at
+// https://www.boost.org/LICENSE_1_0.txt)
+//
+module; // Global module fragment.
+
+#include <GL/glew.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
+#include <expected>
+#include <span>
+#include <utility>
+
+export module rose.opengl.kernel;
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// 1. General utilities.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+export namespace rose::opengl {
+
+////////////////////////////////////////////////////////////////////////////////
+// Generic object definition.
+////////////////////////////////////////////////////////////////////////////////
+
+template <void deleter(GLuint)>
+struct object {
+    ////////////////////////////////////////////////////////////////////////////
+    // Construction/destruction.
+    ////////////////////////////////////////////////////////////////////////////
+
+    object(GLuint handle = 0) noexcept {
+        this->handle = handle;
+    }
+
+    ~object() {
+        if(this->handle != 0) {
+            deleter(this->handle);
+        }
+    }
+
+    object(object const&) = delete;
+    object(object&& other) noexcept : handle{std::exchange(other.handle, 0)} {
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Assignment operator.
+    ////////////////////////////////////////////////////////////////////////////
+
+    auto
+    operator=(object other) noexcept -> object& {
+        std::swap(this->handle, other.handle);
+        return *this;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Conversion operator.
+    ////////////////////////////////////////////////////////////////////////////
+
+    operator GLuint() const noexcept {
+        return this->handle;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Data members.
+    ////////////////////////////////////////////////////////////////////////////
+
+    GLuint handle;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Error definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct error {
+    long long line, code;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// OpenGL context manipulation interface.
+////////////////////////////////////////////////////////////////////////////////
+
+void
+discard_errors() noexcept {
+    while(glGetError() != GL_NO_ERROR) {
+    }
+}
+
+} // namespace rose::opengl
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// 2. OpenGL buffer.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+export namespace rose::opengl {
+
+////////////////////////////////////////////////////////////////////////////////
+// Buffer definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct buffer : object<+[](GLuint handle) { glDeleteBuffers(1, &handle); }> {};
+
+////////////////////////////////////////////////////////////////////////////////
+// Buffer initialization parameters definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct buffer_parameters {
+    GLenum type, usage;
+    std::span<std::byte const> bytes;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Initialization interface.
+////////////////////////////////////////////////////////////////////////////////
+
+auto
+initialize(buffer_parameters parameters) noexcept
+    -> std::expected<buffer, error> {
+    // Prepare GL context.
+    discard_errors();
+
+    // Obtain the size.
+    auto size = static_cast<GLsizeiptr>(parameters.bytes.size());
+    if((size <= 0) || (static_cast<size_t>(size) != parameters.bytes.size())) {
+        return std::unexpected{error{__LINE__, 0}};
+    }
+
+    // Initialize an empty result.
+    auto result = buffer{};
+
+    // Create a new buffer object.
+    glGenBuffers(1, &(result.handle));
+    if(auto code = glGetError(); code != GL_NO_ERROR) {
+        return std::unexpected{error{__LINE__, code}};
+    }
+
+    // Make sure the buffer is unbound on return.
+    struct guard {
+        ~guard() {
+            glBindBuffer(this->type, 0);
+        }
+
+        GLenum type;
+    } _{.type = parameters.type};
+
+    // Specify buffer data.
+    glBindBuffer(parameters.type, result);
+    glBufferData(
+        parameters.type, size, parameters.bytes.data(), parameters.usage);
+
+    // Check for errors.
+    if(auto code = glGetError(); code != GL_NO_ERROR) {
+        return std::unexpected{error{__LINE__, code}};
+    }
+
+    return result;
+}
+
+} // namespace rose::opengl
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// 3. OpenGL texture.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+export namespace rose::opengl {
+
+////////////////////////////////////////////////////////////////////////////////
+// Texture definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct texture : object<+[](GLuint handle) { glDeleteTextures(1, &handle); }> {
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Texture initialization parameters definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct texture_parameters {
+    // Width, height, and number of mipmaps.
+    GLsizei w, h, n_mipmaps;
+
+    // Texture filters.
+    GLenum min_filter, mag_filter;
+
+    // Texture wrap modes.
+    GLenum wrap_s, wrap_t;
+
+    // Pixel data.
+    std::span<std::byte const> pixels;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Initialization interface.
+////////////////////////////////////////////////////////////////////////////////
+
+auto
+initialize(texture_parameters parameters) noexcept
+    -> std::expected<texture, error> {
+    // Prepare GL context.
+    discard_errors();
+
+    // Check texture parameters.
+    if(((parameters.w <= 0) || (parameters.w >= 16384)) ||
+       ((parameters.h <= 0) || (parameters.h >= 16384)) ||
+       ((parameters.n_mipmaps <= 0) || (parameters.n_mipmaps >= 16384))) {
+        return std::unexpected{error{__LINE__, 0}};
+    }
+
+    // Initialize an empty result.
+    auto result = texture{};
+
+    // Create a new texture object.
+    glGenTextures(1, &(result.handle));
+    if(auto code = glGetError(); code != GL_NO_ERROR) {
+        return std::unexpected{error{__LINE__, code}};
+    }
+
+    // Make sure the texture is unbound on return.
+    struct guard {
+        ~guard() {
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    } _;
+
+    // Set texture filtering.
+    if(glBindTexture(GL_TEXTURE_2D, result); true) {
+        glTexParameteri(
+            GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, parameters.mag_filter);
+
+        glTexParameteri(
+            GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, parameters.min_filter);
+    }
+
+    if(auto code = glGetError(); code != GL_NO_ERROR) {
+        return std::unexpected{error{__LINE__, code}};
+    }
+
+    // Set texture wrap mode.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, parameters.wrap_s);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, parameters.wrap_t);
+
+    if(auto code = glGetError(); code != GL_NO_ERROR) {
+        return std::unexpected{error{__LINE__, code}};
+    }
+
+    // Specify texture data.
+    for(auto i = GLint{}; i != parameters.n_mipmaps; ++i) {
+        // Compute mipmap level size.
+        auto size = static_cast<uint32_t>(parameters.w * parameters.h * 4);
+
+        // Obtain pixel data.
+        auto pixel_data = parameters.pixels.data();
+        if(size > parameters.pixels.size()) {
+            pixel_data = nullptr;
+        }
+
+        // Specify mipmap level.
+        glTexImage2D(GL_TEXTURE_2D, i, GL_RGBA8, parameters.w, parameters.h, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, pixel_data);
+
+        // Check for errors.
+        if(auto code = glGetError(); code != GL_NO_ERROR) {
+            return std::unexpected{error{__LINE__, code}};
+        }
+
+        // Obtain the next mipmap level.
+        parameters.pixels = parameters.pixels.subspan(
+            std::min(parameters.pixels.size(), static_cast<size_t>(size)));
+
+        parameters.w = std::max(1, parameters.w / 2);
+        parameters.h = std::max(1, parameters.h / 2);
+    }
+
+    return result;
+}
+
+} // namespace rose::opengl
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// 4. OpenGL framebuffer.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+export namespace rose::opengl {
+
+////////////////////////////////////////////////////////////////////////////////
+// Framebuffer definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct framebuffer
+    : object<+[](GLuint handle) { glDeleteFramebuffers(1, &handle); }> {};
+
+////////////////////////////////////////////////////////////////////////////////
+// Framebuffer initialization parameters definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct framebuffer_parameters {
+    GLuint render_target;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Initialization interface.
+////////////////////////////////////////////////////////////////////////////////
+
+auto
+initialize(framebuffer_parameters parameters) noexcept
+    -> std::expected<framebuffer, error> {
+    // Prepare GL context.
+    discard_errors();
+
+    // Check framebuffer parameters.
+    if(parameters.render_target == 0) {
+        return std::unexpected{error{__LINE__, 0}};
+    }
+
+    // Initialize an empty result.
+    auto result = framebuffer{};
+
+    // Create a new framebuffer object.
+    glGenFramebuffers(1, &(result.handle));
+    if(auto code = glGetError(); code != GL_NO_ERROR) {
+        return std::unexpected{error{__LINE__, code}};
+    }
+
+    // Make sure the framebuffer is unbound on return.
+    struct guard {
+        ~guard() {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+    } _;
+
+    // Specify framebuffer attachments.
+    glBindFramebuffer(GL_FRAMEBUFFER, result);
+    glFramebufferTexture2D( //
+        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+        parameters.render_target, 0);
+
+    // Check framebuffer status.
+    if(auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+       status != GL_FRAMEBUFFER_COMPLETE) {
+        return std::unexpected{error{__LINE__, status}};
+    }
+
+    // Check for errors.
+    if(auto code = glGetError(); code != GL_NO_ERROR) {
+        return std::unexpected{error{__LINE__, code}};
+    }
+
+    return result;
+}
+
+} // namespace rose::opengl
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// 5. OpenGL shader.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+export namespace rose::opengl {
+
+////////////////////////////////////////////////////////////////////////////////
+// Shader definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct shader : object<+[](GLuint handle) { glDeleteShader(handle); }> {};
+
+////////////////////////////////////////////////////////////////////////////////
+// Shader initialization parameters definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct shader_parameters {
+    GLenum type;
+    GLchar const* code;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Initialization interface.
+////////////////////////////////////////////////////////////////////////////////
+
+auto
+initialize(shader_parameters parameters) noexcept
+    -> std::expected<shader, error> {
+    // Prepare GL context.
+    discard_errors();
+
+    // Initialize a new shader object.
+    auto result = shader{glCreateShader(parameters.type)};
+    if(result.handle == 0) {
+        return std::unexpected{error{__LINE__, 0}};
+    }
+
+    // Compile the shader.
+    glShaderSource(result, 1, &(parameters.code), nullptr);
+    glCompileShader(result);
+
+    // Check compilation status.
+    if(auto succeeded = GLint{GL_FALSE}; true) {
+        if(glGetShaderiv(result, GL_COMPILE_STATUS, &succeeded); !succeeded) {
+            return std::unexpected{error{__LINE__, 0}};
+        }
+    }
+
+    // Check for errors.
+    if(auto code = glGetError(); code != GL_NO_ERROR) {
+        return std::unexpected{error{__LINE__, code}};
+    }
+
+    return result;
+}
+
+} // namespace rose::opengl
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// 6. OpenGL program.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+export namespace rose::opengl {
+
+////////////////////////////////////////////////////////////////////////////////
+// Program definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct program : object<+[](GLuint handle) { glDeleteProgram(handle); }> {};
+
+////////////////////////////////////////////////////////////////////////////////
+// Program initialization parameters definition.
+////////////////////////////////////////////////////////////////////////////////
+
+struct program_parameters {
+    GLchar const *code_vert, *code_frag;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Initialization interface.
+////////////////////////////////////////////////////////////////////////////////
+
+auto
+initialize(program_parameters parameters) noexcept
+    -> std::expected<program, error> {
+    // Initialize vertex shader.
+    auto vert = initialize(shader_parameters{
+        .type = GL_VERTEX_SHADER, .code = parameters.code_vert});
+
+    if(!vert) {
+        return std::unexpected{vert.error()};
+    }
+
+    // Initialize fragment shader.
+    auto frag = initialize(shader_parameters{
+        .type = GL_FRAGMENT_SHADER, .code = parameters.code_frag});
+
+    if(!frag) {
+        return std::unexpected{frag.error()};
+    }
+
+    // Initialize a new program object.
+    auto result = program{glCreateProgram()};
+    if(result.handle == 0) {
+        return std::unexpected{error{__LINE__, 0}};
+    }
+
+    // Link the program.
+    glAttachShader(result, *vert);
+    glAttachShader(result, *frag);
+    glLinkProgram(result);
+
+    // Check linking status.
+    if(auto succeeded = GLint{GL_FALSE}; true) {
+        if(glGetProgramiv(result, GL_LINK_STATUS, &succeeded); !succeeded) {
+            return std::unexpected{error{__LINE__, 0}};
+        }
+    }
+
+    // Check for errors.
+    if(auto code = glGetError(); code != GL_NO_ERROR) {
+        return std::unexpected{error{__LINE__, code}};
+    }
+
+    return result;
+}
+
+} // namespace rose::opengl
