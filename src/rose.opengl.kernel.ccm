@@ -28,7 +28,7 @@ export namespace rose::opengl {
 // Generic object definition.
 ////////////////////////////////////////////////////////////////////////////////
 
-template <void deleter(GLuint)>
+template <void Deleter(GLuint)>
 struct object {
     ////////////////////////////////////////////////////////////////////////////
     // Construction/destruction.
@@ -40,7 +40,7 @@ struct object {
 
     ~object() {
         if(this->handle != 0) {
-            deleter(this->handle);
+            Deleter(this->handle);
         }
     }
 
