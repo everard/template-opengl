@@ -66,7 +66,7 @@ main() {
     // Make sure SDL state is cleaned-up upon exit.
     struct guard {
         ~guard() {
-            std::cout << "Cleaning-up SDL state\n";
+            std::cout << "Deleting SDL state\n";
             SDL_Quit();
         }
     } _;

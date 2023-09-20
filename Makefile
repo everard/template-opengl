@@ -30,30 +30,30 @@ CLIBS =\
  -lc++
 
 ################################################################################
-# Source file lists.
+# Source file list.
 ################################################################################
 
 FILES_SRC = $(sort $(wildcard src/*.ccm))
 
 ################################################################################
-# Object file lists.
+# Object file list.
 ################################################################################
 
-OBJECT_FILES_SRC =\
+OBJECT_FILES =\
  $(patsubst src/%.ccm,$(BUILD_DIR)/%.o,$(FILES_SRC))
 
 ################################################################################
 # Targets.
 ################################################################################
 
-all: $(OBJECT_FILES_SRC)
+all: $(patsubst src/%.cc,$(BUILD_DIR)/program.%,$(sort $(wildcard src/*.cc)))
 
 clean:
 	rm -f $(BUILD_DIR)/*.o
 	rm -f $(BUILD_DIR)/*.pcm
 	rm -f $(BUILD_DIR)/program.*
 
-$(BUILD_DIR)/program.%: $(OBJECT_FILES_SRC) $(BUILD_DIR)/%.o
+$(BUILD_DIR)/program.%: $(OBJECT_FILES) $(BUILD_DIR)/%.o
 	$(CC) -Wl,--allow-multiple-definition $^ $(CLIBS) -o $@
 
 .SECONDEXPANSION:
