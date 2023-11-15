@@ -19,15 +19,15 @@ CFLAGS_MODULE =\
 
 CFLAGS =\
  -stdlib=libc++\
- -Wall -Wextra -Wno-missing-field-initializers -O2 -std=c++2b --pedantic\
- -fprebuilt-module-path=$(BUILD_DIR)\
+ -Wall -Wextra -Wno-missing-field-initializers -O2 -std=c++23 --pedantic\
+ -fprebuilt-module-path=$(BUILD_DIR) -Isrc\
  $(shell pkg-config --cflags sdl2)\
  $(shell pkg-config --cflags glew)
 
 CLIBS =\
+ -lc++\
  $(shell pkg-config --libs sdl2)\
- $(shell pkg-config --libs glew)\
- -lc++
+ $(shell pkg-config --libs glew)
 
 ################################################################################
 # Source file list.

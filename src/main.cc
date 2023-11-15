@@ -3,14 +3,9 @@
 // (See accompanying file LICENSE_1_0.txt or copy at
 // https://www.boost.org/LICENSE_1_0.txt)
 //
+#include <everything>
 #include <SDL.h>
 #include <GL/glew.h>
-
-#include <chrono>
-#include <memory>
-#include <random>
-#include <thread>
-#include <iostream>
 
 import rose.opengl.kernel;
 

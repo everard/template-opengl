@@ -4,15 +4,8 @@
 // https://www.boost.org/LICENSE_1_0.txt)
 //
 module; // Global module fragment.
-
+#include <everything>
 #include <GL/glew.h>
-#include <stddef.h>
-#include <stdint.h>
-
-#include <algorithm>
-#include <expected>
-#include <span>
-#include <utility>
 
 export module rose.opengl.kernel;
 
@@ -186,7 +179,7 @@ struct texture : object<+[](GLuint handle) { glDeleteTextures(1, &handle); }> {
 
 struct texture_parameters {
     // Width, height, and number of mipmaps.
-    GLsizei w, h, n_mipmaps;
+    GLsizei width, height, mipmap_count;
 
     // Texture filters.
     GLenum min_filter, mag_filter;
@@ -209,9 +202,9 @@ initialize(texture_parameters parameters) noexcept
     discard_errors();
 
     // Check texture parameters.
-    if(((parameters.w <= 0) || (parameters.w >= 16384)) ||
-       ((parameters.h <= 0) || (parameters.h >= 16384)) ||
-       ((parameters.n_mipmaps <= 0) || (parameters.n_mipmaps >= 16384))) {
+    if(((parameters.width <= 0) || (parameters.width >= 16384)) ||
+       ((parameters.height <= 0) || (parameters.height >= 16384)) ||
+       ((parameters.mipmap_count <= 0) || (parameters.mipmap_count >= 16384))) {
         return std::unexpected{error{__LINE__, 0}};
     }
 
@@ -253,19 +246,20 @@ initialize(texture_parameters parameters) noexcept
     }
 
     // Specify texture data.
-    for(auto i = GLint{}; i != parameters.n_mipmaps; ++i) {
+    for(auto i = GLint{}; i != parameters.mipmap_count; ++i) {
         // Compute mipmap level size.
-        auto size = static_cast<uint32_t>(parameters.w * parameters.h * 4);
+        auto size = parameters.width * parameters.height * 4;
 
         // Obtain pixel data.
         auto pixel_data = parameters.pixels.data();
-        if(size > parameters.pixels.size()) {
+        if(static_cast<GLuint>(size) > parameters.pixels.size()) {
             pixel_data = nullptr;
         }
 
         // Specify mipmap level.
-        glTexImage2D(GL_TEXTURE_2D, i, GL_RGBA8, parameters.w, parameters.h, 0,
-                     GL_RGBA, GL_UNSIGNED_BYTE, pixel_data);
+        glTexImage2D( //
+            GL_TEXTURE_2D, i, GL_RGBA8, parameters.width, parameters.height, 0,
+            GL_RGBA, GL_UNSIGNED_BYTE, pixel_data);
 
         // Check for errors.
         if(auto code = glGetError(); code != GL_NO_ERROR) {
@@ -276,8 +270,8 @@ initialize(texture_parameters parameters) noexcept
         parameters.pixels = parameters.pixels.subspan(
             std::min(parameters.pixels.size(), static_cast<size_t>(size)));
 
-        parameters.w = std::max(1, parameters.w / 2);
-        parameters.h = std::max(1, parameters.h / 2);
+        parameters.width = std::max(1, parameters.width / 2);
+        parameters.height = std::max(1, parameters.height / 2);
     }
 
     return result;
