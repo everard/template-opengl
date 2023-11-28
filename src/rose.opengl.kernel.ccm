@@ -98,7 +98,7 @@ export namespace rose::opengl {
 // Buffer definition.
 ////////////////////////////////////////////////////////////////////////////////
 
-struct buffer : object<+[](GLuint handle) { glDeleteBuffers(1, &handle); }> {};
+using buffer = object<+[](GLuint handle) { glDeleteBuffers(1, &handle); }>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Buffer initialization parameters definition.
@@ -170,8 +170,7 @@ export namespace rose::opengl {
 // Texture definition.
 ////////////////////////////////////////////////////////////////////////////////
 
-struct texture : object<+[](GLuint handle) { glDeleteTextures(1, &handle); }> {
-};
+using texture = object<+[](GLuint handle) { glDeleteTextures(1, &handle); }>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Texture initialization parameters definition.
@@ -233,6 +232,7 @@ initialize(texture_parameters parameters) noexcept
             GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, parameters.min_filter);
     }
 
+    // Check for errors.
     if(auto code = glGetError(); code != GL_NO_ERROR) {
         return std::unexpected{error{__LINE__, code}};
     }
@@ -241,6 +241,7 @@ initialize(texture_parameters parameters) noexcept
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, parameters.wrap_s);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, parameters.wrap_t);
 
+    // Check for errors.
     if(auto code = glGetError(); code != GL_NO_ERROR) {
         return std::unexpected{error{__LINE__, code}};
     }
@@ -270,6 +271,7 @@ initialize(texture_parameters parameters) noexcept
         parameters.pixels = parameters.pixels.subspan(
             std::min(parameters.pixels.size(), static_cast<size_t>(size)));
 
+        // Compute the extent of the next mipmap level.
         parameters.width = std::max(1, parameters.width / 2);
         parameters.height = std::max(1, parameters.height / 2);
     }
@@ -291,15 +293,15 @@ export namespace rose::opengl {
 // Framebuffer definition.
 ////////////////////////////////////////////////////////////////////////////////
 
-struct framebuffer
-    : object<+[](GLuint handle) { glDeleteFramebuffers(1, &handle); }> {};
+using framebuffer =
+    object<+[](GLuint handle) { glDeleteFramebuffers(1, &handle); }>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Framebuffer initialization parameters definition.
 ////////////////////////////////////////////////////////////////////////////////
 
 struct framebuffer_parameters {
-    GLuint render_target;
+    GLuint render_target, depth_buffer;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -311,11 +313,6 @@ initialize(framebuffer_parameters parameters) noexcept
     -> std::expected<framebuffer, error> {
     // Prepare GL context.
     discard_errors();
-
-    // Check framebuffer parameters.
-    if(parameters.render_target == 0) {
-        return std::unexpected{error{__LINE__, 0}};
-    }
 
     // Initialize an empty result.
     auto result = framebuffer{};
@@ -335,9 +332,18 @@ initialize(framebuffer_parameters parameters) noexcept
 
     // Specify framebuffer attachments.
     glBindFramebuffer(GL_FRAMEBUFFER, result);
-    glFramebufferTexture2D( //
-        GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-        parameters.render_target, 0);
+
+    if(parameters.render_target != 0) {
+        glFramebufferTexture2D( //
+            GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+            parameters.render_target, 0);
+    }
+
+    if(parameters.depth_buffer != 0) {
+        glFramebufferTexture2D( //
+            GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+            parameters.depth_buffer, 0);
+    }
 
     // Check framebuffer status.
     if(auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
@@ -367,7 +373,7 @@ export namespace rose::opengl {
 // Shader definition.
 ////////////////////////////////////////////////////////////////////////////////
 
-struct shader : object<+[](GLuint handle) { glDeleteShader(handle); }> {};
+using shader = object<+[](GLuint handle) { glDeleteShader(handle); }>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Shader initialization parameters definition.
@@ -427,7 +433,7 @@ export namespace rose::opengl {
 // Program definition.
 ////////////////////////////////////////////////////////////////////////////////
 
-struct program : object<+[](GLuint handle) { glDeleteProgram(handle); }> {};
+using program = object<+[](GLuint handle) { glDeleteProgram(handle); }>;
 
 ////////////////////////////////////////////////////////////////////////////////
 // Program initialization parameters definition.
@@ -445,19 +451,19 @@ auto
 initialize(program_parameters parameters) noexcept
     -> std::expected<program, error> {
     // Initialize vertex shader.
-    auto vert = initialize(shader_parameters{
+    auto vertex_shader = initialize(shader_parameters{
         .type = GL_VERTEX_SHADER, .code = parameters.code_vert});
 
-    if(!vert) {
-        return std::unexpected{vert.error()};
+    if(!vertex_shader) {
+        return std::unexpected{vertex_shader.error()};
     }
 
     // Initialize fragment shader.
-    auto frag = initialize(shader_parameters{
+    auto fragment_shader = initialize(shader_parameters{
         .type = GL_FRAGMENT_SHADER, .code = parameters.code_frag});
 
-    if(!frag) {
-        return std::unexpected{frag.error()};
+    if(!fragment_shader) {
+        return std::unexpected{fragment_shader.error()};
     }
 
     // Initialize a new program object.
@@ -467,8 +473,8 @@ initialize(program_parameters parameters) noexcept
     }
 
     // Link the program.
-    glAttachShader(result, *vert);
-    glAttachShader(result, *frag);
+    glAttachShader(result, *vertex_shader);
+    glAttachShader(result, *fragment_shader);
     glLinkProgram(result);
 
     // Check linking status.
