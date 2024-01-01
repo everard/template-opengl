@@ -1,0 +1,3 @@
+library:sdl2
+library:glew
+program:main = rose.opengl.kernel
