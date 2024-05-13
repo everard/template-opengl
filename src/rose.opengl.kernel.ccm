@@ -258,7 +258,7 @@ initialize(texture_parameters parameters) noexcept
         }
 
         // Specify mipmap level.
-        glTexImage2D( //
+        glTexImage2D(
             GL_TEXTURE_2D, i, GL_RGBA8, parameters.width, parameters.height, 0,
             GL_RGBA, GL_UNSIGNED_BYTE, pixel_data);
 
@@ -334,13 +334,13 @@ initialize(framebuffer_parameters parameters) noexcept
     glBindFramebuffer(GL_FRAMEBUFFER, result);
 
     if(parameters.render_target != 0) {
-        glFramebufferTexture2D( //
+        glFramebufferTexture2D(
             GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
             parameters.render_target, 0);
     }
 
     if(parameters.depth_buffer != 0) {
-        glFramebufferTexture2D( //
+        glFramebufferTexture2D(
             GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
             parameters.depth_buffer, 0);
     }
