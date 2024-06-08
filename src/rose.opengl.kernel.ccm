@@ -180,12 +180,6 @@ struct texture_parameters {
     // Width, height, and number of mipmaps.
     GLsizei width, height, mipmap_count;
 
-    // Texture filters.
-    GLenum min_filter, mag_filter;
-
-    // Texture wrap modes.
-    GLenum wrap_s, wrap_t;
-
     // Pixel data.
     std::span<std::byte const> pixels;
 };
@@ -223,23 +217,8 @@ initialize(texture_parameters parameters) noexcept
         }
     } _;
 
-    // Set texture filtering.
-    if(glBindTexture(GL_TEXTURE_2D, result); true) {
-        glTexParameteri(
-            GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, parameters.mag_filter);
-
-        glTexParameteri(
-            GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, parameters.min_filter);
-    }
-
-    // Check for errors.
-    if(auto code = glGetError(); code != GL_NO_ERROR) {
-        return std::unexpected{error{__LINE__, code}};
-    }
-
-    // Set texture wrap mode.
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, parameters.wrap_s);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, parameters.wrap_t);
+    // Bind the texture.
+    glBindTexture(GL_TEXTURE_2D, result);
 
     // Check for errors.
     if(auto code = glGetError(); code != GL_NO_ERROR) {
@@ -251,13 +230,12 @@ initialize(texture_parameters parameters) noexcept
         // Compute mipmap level size.
         auto size = parameters.width * parameters.height * 4;
 
-        // Obtain pixel data.
+        // Specify mipmap level data.
         auto pixel_data = parameters.pixels.data();
         if(static_cast<GLuint>(size) > parameters.pixels.size()) {
             pixel_data = nullptr;
         }
 
-        // Specify mipmap level.
         glTexImage2D(
             GL_TEXTURE_2D, i, GL_RGBA8, parameters.width, parameters.height, 0,
             GL_RGBA, GL_UNSIGNED_BYTE, pixel_data);
@@ -440,7 +418,9 @@ using program = object<+[](GLuint handle) { glDeleteProgram(handle); }>;
 ////////////////////////////////////////////////////////////////////////////////
 
 struct program_parameters {
-    GLchar const *code_vert, *code_frag;
+    struct {
+        GLchar const *vertex_shader, *fragment_shader;
+    } codes;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -452,7 +432,7 @@ initialize(program_parameters parameters) noexcept
     -> std::expected<program, error> {
     // Initialize vertex shader.
     auto vertex_shader = initialize(shader_parameters{
-        .type = GL_VERTEX_SHADER, .code = parameters.code_vert});
+        .type = GL_VERTEX_SHADER, .code = parameters.codes.vertex_shader});
 
     if(!vertex_shader) {
         return std::unexpected{vertex_shader.error()};
@@ -460,7 +440,7 @@ initialize(program_parameters parameters) noexcept
 
     // Initialize fragment shader.
     auto fragment_shader = initialize(shader_parameters{
-        .type = GL_FRAGMENT_SHADER, .code = parameters.code_frag});
+        .type = GL_FRAGMENT_SHADER, .code = parameters.codes.fragment_shader});
 
     if(!fragment_shader) {
         return std::unexpected{fragment_shader.error()};
